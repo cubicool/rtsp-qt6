@@ -6,7 +6,13 @@ Demos Using QT6 &amp; VLC/FFmpeg RTSP
 
 You'll need to create a test video and host an RTSP server (however you want).
 Personally, I used `cvlc` for this, and included a small wrapper script called
-`stream.sh` in this repo for that purpose.
+`server-cvlc.sh` in this repo for that purpose.
+
+## Python Server
+There is ALSO a `server-gstreamer.py` script that wraps the GStreamer pipeline,
+providing a CLI for stopping/starting/pausing the RTSP server. In the future it
+will have commands for instroducing arbitrary latency, dropped frames, etc., to
+help test the robustnes of the QT6 RTSP examples.
 
 ## FFmpeg CLI Conversion
 

@@ -115,7 +115,7 @@ private:
 int main(int argc, char* argv[]) {
 	QApplication app(argc, argv);
 
-	VLCWidget viewer("rtsp://localhost:8554/mystream");
+	VLCWidget viewer("rtsp://localhost:8554/test");
 
 	// viewer.setWindowTitle("rtsp-qt6-vlc");
 	viewer.resize(640, 480);

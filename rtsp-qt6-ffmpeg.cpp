@@ -167,7 +167,7 @@ void FFmpegWidget::decodingLoop() {
 int main(int argc, char** argv) {
 	QApplication app(argc, argv);
 
-	FFmpegWidget viewer("rtsp://localhost:8554/mystream");
+	FFmpegWidget viewer("rtsp://localhost:8554/test");
 
 	// viewer.setWindowTitle("rtsp-qt6-ffmpeg");
 	viewer.resize(640, 480);
