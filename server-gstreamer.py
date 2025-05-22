@@ -18,7 +18,7 @@ class InteractiveRTSPServer:
 	def __init__(self):
 		self.server = GstRtspServer.RTSPServer()
 		self.factory = GstRtspServer.RTSPMediaFactory()
-		self.factory.set_launch(self._launch_pipeline())
+		self.factory.set_launch(self._pipeline())
 		self.factory.set_shared(True)
 		self.server.get_mount_points().add_factory("/test", self.factory)
 
@@ -57,26 +57,63 @@ class InteractiveRTSPServer:
 			self._pad_probe_id = self._pad.add_probe(Gst.PadProbeType.BLOCK, block_cb)
 
 	# TODO: Move this behavior up into `pause()`, and make it a "toggle."
-	def restore(self):
+	def unpause(self):
 		if self._pad and self._pad_probe_id:
 			print("[server] Resuming stream...")
 
 			self._pad.remove_probe(self._pad_probe_id)
 			self._pad_probe_id = None
 
-	def _launch_pipeline(self):
-		return(
-			f"( videotestsrc pattern={self._patterns()} "
-			"! x264enc tune=zerolatency "
-			"! rtph264pay name=pay0 pt=96 )"
+	def _pipeline(self):
+		"""
+		pipeline = (
+			# Creates a "test" source.
+			# https://gstreamer.freedesktop.org/documentation/videotestsrc/?gi-language=c
+			f"videotestsrc is-live=true pattern={self._patterns()}",
+
+			# Adds some simulated lag/latency.
+			# https://gstreamer.freedesktop.org/documentation/coreelements/identity.html?gi-language=c
+			# "identity sleep-time=100000",
+
+			# Encodes into H.264 video.
+			# https://gstreamer.freedesktop.org/documentation/x264/index.html?gi-language=c
+			"x264enc tune=zerolatency",
+
+			# Packs input into RTP packets for RTSP; "pt" it "payload type."
+			# https://gstreamer.freedesktop.org/documentation/rtp/rtph264pay.html?gi-language=c
+			"rtph264pay name=pay0 pt=96"
+		)
+		"""
+
+		pipeline = (
+			"videotestsrc pattern=ball is-live=true",
+
+			# Begins the process of manipulating framerate (I think)?
+			# https://gstreamer.freedesktop.org/documentation/videorate/?gi-language=c
+			"videorate drop-only=true",
+
+			# Force low framerate of 10FPS.
+			# https://gstreamer.freedesktop.org/documentation/additional/design/mediatype-video-raw.html?gi-language=c
+			"video/x-raw,framerate=10/1",
+
+			# https://gstreamer.freedesktop.org/documentation/pango/timeoverlay.html?gi-language=c
+			# "timeoverlay halign=left valign=bottom font-desc=\"Sans, 24\"",
+			"timeoverlay",
+
+			# Force a SMALL queue, potentially adding more latency (I think)?
+			# https://gstreamer.freedesktop.org/documentation/coreelements/queue.html?gi-language=c
+			"queue max-size-buffers=2",
+
+			"x264enc tune=zerolatency",
+
+			"rtph264pay name=pay0 pt=96"
 		)
 
-		# return(
-		# 	"( videotestsrc is-live=true pattern=smpte "
-		# 	"! video/x-raw,width=640,height=480,framerate=30/1 "
-		# 	"! x264enc tune=zerolatency bitrate=512 speed-preset=superfast "
-		# 	"! rtph264pay config-interval=1 name=pay0 pt=96 )"
-		# )
+		p = "( " + " ! ".join(pipeline) + " )"
+
+		print(f"Using pipeline: {p}")
+
+		return p
 
 	def _patterns(self):
 		"""

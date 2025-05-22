@@ -12,18 +12,18 @@ int main(int argc, char** argv) {
 	QMediaPlayer player;
 
 	QObject::connect(&player, &QMediaPlayer::mediaStatusChanged, [](QMediaPlayer::MediaStatus status) {
-		qDebug() << "Media status changed:" << status;
+		qWarning() << "Media status changed:" << status;
 	});
 
 	QObject::connect(&player, &QMediaPlayer::positionChanged, [](qint64 pos) {
-		qDebug() << "Position changed:" << pos;
+		qWarning() << "Position changed:" << pos;
 	});
 
 	QObject::connect(&player, &QMediaPlayer::metaDataChanged, [&player]() {
-		qDebug() << "Metadata changed:";
+		qWarning() << "Metadata changed:";
 
 		for(const auto& key : player.metaData().keys()) {
-			qDebug() << key << ":" << player.metaData().stringValue(key);
+			qWarning() << key << ":" << player.metaData().stringValue(key);
 		}
 	});
 
