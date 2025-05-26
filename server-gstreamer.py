@@ -15,105 +15,91 @@ from gi.repository import Gst, GstRtspServer, GObject, GLib
 
 Gst.init(None)
 
-"""
-class ExampleRtspMediaFactory(GstRtspServer.RTSPMediaFactory):
-	def __init__(self):
-		super().__init__()
-		self.frame_count = 0
-		self.jump_offset = 0
-		self.inject_jump_at = None  # when to apply jump
-		self.jump_applied = False
-
-	def simulate_timestamp_jump(self, offset_ns, trigger_at_frame=30):
-		# Simulate a timestamp jump by offset_ns nanoseconds at frame X.
-		self.jump_offset = offset_ns
-		self.inject_jump_at = trigger_at_frame
-		self.jump_applied = False
-
-	def on_prepared(self, media):
-		element = media.get_element()
-		payloader = element.get_by_name("pay0")
-		pad = payloader.get_static_pad("src")
-
-		# Add probe for timestamp manipulation
-		pad.add_probe(Gst.PadProbeType.BUFFER, self.timestamp_jump_probe)
-
-	def timestamp_jump_probe(self, pad, info):
-		if info.type & Gst.PadProbeType.BUFFER:
-			buf = info.get_buffer()
-
-			if not buf:
-				return Gst.PadProbeReturn.OK
-
-			print(f"[Frame {self.frame_count}] Original PTS: {buf.pts}")
-
-			# Simulate jump
-			if self.inject_jump_at is not None and self.frame_count == self.inject_jump_at and not self.jump_applied:
-				print(f"*** SIMULATING TIME JUMP: +{self.jump_offset / 1e9:.2f} sec ***")
-
-				buf.pts += self.jump_offset
-				self.jump_applied = True
-
-			else:
-				# normal PTS or already jumped
-				pass
-
-			print(f"[Frame {self.frame_count}] New PTS: {buf.pts}")
-
-			self.frame_count += 1
-
-		return Gst.PadProbeReturn.OK
-"""
-
 class DropRTSPMediaFactory(GstRtspServer.RTSPMediaFactory):
 	def __init__(self):
 		super().__init__()
 
+		# Members for the `drop_frames` method!
 		self.drop_count = 0
+
+		# Members for the `jump_frames` method!
+		self.jump_offset = None
+		self.jump_ms = None
 
 	def drop_frames(self, n):
 		print(f"[drop_frames] Request to drop next {n} frames")
 
 		self.drop_count += n
 
+	def jump_frames(self, ms):
+		print(f"[jump_frames] Request to jump {ms}ms forward in frames")
+
+		self.jump_ms = ms
+
+	# This is always called when the media need to be configured (as a "virtual" method).
 	def do_configure(self, media):
-		media.connect("prepared", self.on_prepared)
+		def _media_prepared(media):
+			element = media.get_element()
 
-	def on_prepared(self, media):
-		element = media.get_element()
+			if not element:
+				print("[_media_prepared] Failed to get media element")
 
-		if not element:
-			print("[on_prepared] Failed to get media element")
+				return
 
-			return
+			payloader = element.get_by_name("pay0")
 
-		payloader = element.get_by_name("pay0")
+			if not payloader:
+				print("[_media_prepared] Named payloader 'pay0' not found")
 
-		if not payloader:
-			print("[on_prepared] Named payloader 'pay0' not found")
+				return
 
-			return
+			pad = payloader.get_static_pad("src")
 
-		pad = payloader.get_static_pad("src")
+			if not pad:
+				print("[_media_prepared] Could not get 'src' pad of pay0")
 
-		if not pad:
-			print("[on_prepared] Could not get 'src' pad of pay0")
+				return
 
-			return
+			# We "install" this probe in the live above, so it ALWAYS gets run; thus, we need a sentinel
+			# "member" to kick off some logic when we want to change behavior.
+			def _drop_probe(pad, info):
+				if self.drop_count > 0:
+					self.drop_count -= 1
 
-		print("[on_prepared] Attaching drop probe to pay0:src")
+					print(f"[_drop_probe] Dropping frame... {self.drop_count} left")
 
-		pad.add_probe(Gst.PadProbeType.BUFFER, self.drop_probe)
+					return Gst.PadProbeReturn.DROP
 
-	def drop_probe(self, pad, info):
-		if self.drop_count > 0:
-			self.drop_count -= 1
+				return Gst.PadProbeReturn.OK
 
-			print(f"[drop_probe] Dropping frame... {self.drop_count} left")
+			print("[_media_prepared] Attaching DROP probe to pay0:src")
 
-			return Gst.PadProbeReturn.DROP
+			pad.add_probe(Gst.PadProbeType.BUFFER, _drop_probe)
 
-		return Gst.PadProbeReturn.OK
+			def _jump_probe(pad, info):
+				if self.jump_ms and info.type & Gst.PadProbeType.BUFFER:
+					buf = info.get_buffer()
+
+					print(f"[_jump_probe] PTS: {buf.pts}")
+
+					self.jump_offset = buf.pts + self.jump_ms
+
+					buf.pts += self.jump_ms
+
+					self.jump_ms = None
+
+				return Gst.PadProbeReturn.OK
+
+			print("[_media_prepared] Attaching JUMP probe to pay0:src")
+
+			pad.add_probe(Gst.PadProbeType.BUFFER, _jump_probe)
+
+		media.connect("prepared", _media_prepared)
+
+		def _media_unprepared(media):
+			print("[_media_unprepared] ...client closed!");
+
+		media.connect("unprepared", _media_unprepared)
 
 class InteractiveRTSPServer:
 	def __init__(self):
@@ -127,36 +113,32 @@ class InteractiveRTSPServer:
 		self._media = None
 
 	def start(self):
+		def _media_configure(factory, media):
+			print("_media_configure")
+
+			def _prepared(media_obj):
+				pipeline = media_obj.get_element()
+				src = pipeline.get_by_name("videotestsrc0")
+
+				if src:
+					pad = src.get_static_pad("src")
+
+					self._pad = pad
+					self._media = media_obj
+
+			media.connect("prepared", _prepared)
+
 		self.server.attach(None)
-		self.factory.connect("media-configure", self._on_media_configure)
-
-	def _on_media_configure(self, factory, media):
-		def _on_prepared(media_obj):
-			pipeline = media_obj.get_element()
-			src = pipeline.get_by_name("videotestsrc0")
-
-			if src:
-				pad = src.get_static_pad("src")
-
-				self._pad = pad
-				self._media = media_obj
-
-		media.connect("prepared", _on_prepared)
-
-	# def stop(self):
-	# 	print("[server] Stopping stream...")
-	#
-	# 	self.server.quit()
+		self.factory.connect("media-configure", _media_configure)
 
 	def pause(self):
 		if self._pad and not self._pad_probe_id:
-
 			print("[server] Pausing stream...")
 
-			def block_cb(pad, info):
+			def block_probe(pad, info):
 				return Gst.PadProbeReturn.OK
 
-			self._pad_probe_id = self._pad.add_probe(Gst.PadProbeType.BLOCK, block_cb)
+			self._pad_probe_id = self._pad.add_probe(Gst.PadProbeType.BLOCK, block_probe)
 
 	# TODO: Move this behavior up into `pause()`, and make it a "toggle."
 	def unpause(self):
@@ -169,7 +151,12 @@ class InteractiveRTSPServer:
 	def drop(self, count):
 		print(f"[server] Request to drop next {count} frames")
 
-		self.factory.drop_count = count
+		self.factory.drop_frames(count)
+
+	def jump(self, ms):
+		print(f"[server] Request to jump forward {ms}ms")
+
+		self.factory.jump_frames(ms)
 
 	def _pipeline(self):
 		"""
@@ -203,7 +190,7 @@ class InteractiveRTSPServer:
 
 			# Force low framerate of 10FPS.
 			# https://gstreamer.freedesktop.org/documentation/additional/design/mediatype-video-raw.html?gi-language=c
-			"video/x-raw,framerate=15/1",
+			"video/x-raw,framerate=5/1",
 
 			# https://gstreamer.freedesktop.org/documentation/pango/timeoverlay.html?gi-language=c
 			# "timeoverlay halign=left valign=bottom font-desc=\"Sans, 24\"",
@@ -257,7 +244,7 @@ class InteractiveRTSPServer:
 		return "ball"
 
 def command_loop(server):
-	print("[input] Type commands: pause / unpause / exit / drop <count>")
+	print("[input] Type commands: pause / unpause / exit / drop <count> / jump <ms>")
 
 	while True:
 		try:
@@ -272,6 +259,9 @@ def command_loop(server):
 
 			elif cmd == "drop":
 				server.drop(len(args) and int(args[0]) or 10)
+
+			elif cmd == "jump":
+				server.jump(len(args) and int(args[0]) or 5000)
 
 			elif cmd == "exit":
 				print("[input] Exiting...")

@@ -1,3 +1,6 @@
+// https://doc.qt.io/qt-6/qmediaplayer.html
+// https://doc.qt.io/qt-6/qmediaplayer.html#signals
+
 #include <QApplication>
 #include <QMediaPlayer>
 #include <QMediaMetaData>
@@ -15,6 +18,7 @@ int main(int argc, char** argv) {
 		qWarning() << "Media status changed:" << status;
 	});
 
+	// https://doc.qt.io/qt-6/qmediaplayer.html#positionChanged
 	QObject::connect(&player, &QMediaPlayer::positionChanged, [](qint64 pos) {
 		qWarning() << "Position changed:" << pos;
 	});
