@@ -13,11 +13,23 @@ pkg_check_modules(SWSCALE REQUIRED libswscale)
 
 set(CMAKE_AUTOMOC ON)
 
-# ---------------------------------------------------------------------- FFmpeg
+# ---------------------------------------------------------------- QMediaPlayer
 add_executable(rtsp-qt6-qmediaplayer "rtsp-qt6-qmediaplayer.cpp")
 
 target_compile_features(rtsp-qt6-qmediaplayer PUBLIC cxx_std_20)
 target_link_libraries(rtsp-qt6-qmediaplayer PRIVATE
+	Qt6::Core
+	Qt6::Gui
+	Qt6::Widgets
+	Qt6::Multimedia
+	Qt6::MultimediaWidgets
+)
+
+# ------------------------------------------------------------------ QVideoSink
+add_executable(rtsp-qt6-qvideosink "rtsp-qt6-qvideosink.cpp")
+
+target_compile_features(rtsp-qt6-qvideosink PUBLIC cxx_std_20)
+target_link_libraries(rtsp-qt6-qvideosink PRIVATE
 	Qt6::Core
 	Qt6::Gui
 	Qt6::Widgets
